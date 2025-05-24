@@ -34,6 +34,7 @@ use protorune::message::{MessageContext, MessageContextParcel};
 use protorune::tables::RUNES;
 use protorune::view;
 use protorune_support::balance_sheet::ProtoruneRuneId;
+use protorune_support::balance_sheet::BalanceSheet;
 use protorune_support::rune_transfer::RuneTransfer;
 use protorune_support::utils::{consensus_decode, decode_varint_list};
 use std::collections::HashMap;
@@ -394,7 +395,7 @@ pub fn alkanes_holders_by_token(
     let mut response = HoldersByTokenResponse::new();
     
     // Convert AlkaneId to ProtoruneRuneId for compatibility with the storage system
-    let protorune_id = ProtoruneRuneId {
+    let _protorune_id = ProtoruneRuneId {
         height: MessageField::some(protorune_support::proto::protorune::Uint128::from(token_id.block)),
         txindex: MessageField::some(protorune_support::proto::protorune::Uint128::from(token_id.tx)),
         special_fields: SpecialFields::new(),
