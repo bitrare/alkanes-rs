@@ -161,3 +161,23 @@ message BlockResponse {
   bytes block = 1;
   uint32 height = 2;
 }
+
+message HoldersByTokenRequest {
+  AlkaneId token_id = 1;
+}
+
+message HoldersByTokenResponse {
+  repeated TokenHolder holders = 1;
+}
+
+message TokenHolder {
+  bytes address = 1;
+  uint128 total_balance = 2;
+  repeated HolderOutpoint outpoints = 3;
+}
+
+message HolderOutpoint {
+  bytes txid = 1;
+  uint32 vout = 2;
+  uint128 balance = 3;
+}
