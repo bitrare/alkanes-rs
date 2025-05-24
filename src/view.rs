@@ -380,7 +380,7 @@ pub fn alkanes_holders_by_token(
     input: &Vec<u8>,
 ) -> Result<alkanes_support::proto::alkanes::HoldersByTokenResponse> {
     use alkanes_support::proto::alkanes::{HoldersByTokenRequest, HoldersByTokenResponse, TokenHolder, HolderOutpoint};
-    use protorune_support::utils::{consensus_decode, outpoint_encode};
+    use protorune_support::utils::consensus_decode;
     use protorune::tables;
     use protorune::balance_sheet::load_sheet;
     use std::collections::HashMap;
@@ -405,47 +405,70 @@ pub fn alkanes_holders_by_token(
         tx: token_id.tx,
     };
     
-    // We need to iterate through all outpoints and check if they contain our token
-    // Since we don't have a direct way to iterate all addresses, we'll use the OUTPOINTS_FOR_ADDRESS table
-    // But first we need to get all addresses. Let's use a different approach:
-    // We'll iterate through all outpoints in the OUTPOINT_TO_RUNES table for our protocol
+    // Since get_all_keys doesn't exist, let's use a different approach
+    // We'll iterate through a reasonable range of heights to find outpoints with our token
+    // This is similar to the original approach but more targeted
+    let creation_height: u64 = token_id.block.try_into().unwrap_or(0);
+    let current_height = 900000u64; // This should be optimized
     
-    // Get all outpoints that have runes for our protocol
-    let outpoint_list = table.OUTPOINT_TO_RUNES.get_all_keys();
-    
-    for outpoint_bytes in outpoint_list {
-        // Load the balance sheet for this outpoint
-        let balance_sheet = load_sheet(
-            &table.OUTPOINT_TO_RUNES.select(&outpoint_bytes)
-        );
+    for height in creation_height..=current_height {
+        // Get transaction IDs for this height from our protocol table
+        let tx_ids = table.HEIGHT_TO_TRANSACTION_IDS
+            .select_value::<u64>(height)
+            .get_list();
+            
+        if tx_ids.is_empty() {
+            continue;
+        }
         
-        // Check if this outpoint contains our target token
-        let token_balance = balance_sheet.get_cached(&balance_sheet_protorune_id);
-        if token_balance > 0 {
-            // Decode the outpoint to get txid and vout
-            let mut cursor = Cursor::new(outpoint_bytes.as_ref().clone());
-            if let Ok(outpoint) = consensus_decode::<OutPoint>(&mut cursor) {
-                // Get the address that owns this outpoint
-                let address_bytes = tables::OUTPOINT_SPENDABLE_BY
-                    .select(&outpoint_bytes)
-                    .get();
-                    
-                if !address_bytes.is_empty() {
-                    // Create holder outpoint info
-                    let holder_outpoint = HolderOutpoint {
-                        txid: outpoint.txid.as_byte_array().to_vec(),
-                        vout: outpoint.vout,
-                        balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance)),
-                        special_fields: SpecialFields::new(),
+        // For each transaction at this height
+        for tx_id_bytes in tx_ids {
+            let mut cursor = Cursor::new(tx_id_bytes.as_ref().clone());
+            if let Ok(tx_id) = consensus_decode::<bitcoin::Txid>(&mut cursor) {
+                // Check each possible output of this transaction (reasonable limit)
+                for vout in 0..20u32 {
+                    let outpoint = OutPoint { txid: tx_id, vout };
+                    let outpoint_bytes = match protorune_support::utils::outpoint_encode(&outpoint) {
+                        Ok(bytes) => bytes,
+                        Err(_) => continue,
                     };
                     
-                    // Add to or update the address balance
-                    let entry = address_balances.entry(address_bytes.as_ref().clone())
-                        .or_insert((0u128, Vec::new()));
-                    entry.0 += token_balance;
-                    entry.1.push(holder_outpoint);
+                    // Load the balance sheet for this outpoint using the correct protocol table
+                    let balance_sheet = load_sheet(
+                        &table.OUTPOINT_TO_RUNES.select(&outpoint_bytes)
+                    );
+                    
+                    // Check if this outpoint contains our target token
+                    let token_balance = balance_sheet.get_cached(&balance_sheet_protorune_id);
+                    if token_balance > 0 {
+                        // Get the address that owns this outpoint
+                        let address_bytes = tables::OUTPOINT_SPENDABLE_BY
+                            .select(&outpoint_bytes)
+                            .get();
+                            
+                        if !address_bytes.is_empty() {
+                            // Create holder outpoint info
+                            let holder_outpoint = HolderOutpoint {
+                                txid: outpoint.txid.as_byte_array().to_vec(),
+                                vout: outpoint.vout,
+                                balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance)),
+                                special_fields: SpecialFields::new(),
+                            };
+                            
+                            // Add to or update the address balance
+                            let entry = address_balances.entry(address_bytes.as_ref().clone())
+                                .or_insert((0u128, Vec::new()));
+                            entry.0 += token_balance;
+                            entry.1.push(holder_outpoint);
+                        }
+                    }
                 }
             }
+        }
+        
+        // Break if we've found enough holders
+        if address_balances.len() > 1000 {
+            break;
         }
     }
     
