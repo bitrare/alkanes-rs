@@ -42,7 +42,6 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::io::Cursor;
 use std::sync::{Arc, LazyLock, Mutex};
-use protobuf::SpecialFields;
 
 pub fn parcels_from_protobuf(v: proto::alkanes::MultiSimulateRequest) -> Vec<MessageContextParcel> {
     v.parcels.into_iter().map(parcel_from_protobuf).collect()
@@ -381,15 +380,14 @@ pub fn alkanes_holders_by_token(
     input: &Vec<u8>,
 ) -> Result<alkanes_support::proto::alkanes::HoldersByTokenResponse> {
     use alkanes_support::proto::alkanes::{HoldersByTokenRequest, HoldersByTokenResponse, TokenHolder, HolderOutpoint};
-    use protorune_support::proto::protorune::{ProtoruneRuneId, Uint128};
-    use protorune_support::balance_sheet::{BalanceSheet, BalanceSheetOperations};
+    use protorune_support::balance_sheet::{BalanceSheetOperations, ProtoruneRuneId};
     use protorune_support::utils::{consensus_decode, outpoint_encode};
     use protorune::tables;
     use protorune::balance_sheet::load_sheet;
     use std::collections::HashMap;
     use std::io::Cursor;
     use bitcoin::OutPoint;
-    use protobuf::SpecialFields;
+    use protobuf::MessageField;
     
     let request = HoldersByTokenRequest::parse_from_bytes(input)?;
     let token_id: AlkaneId = request.token_id.unwrap().into();
@@ -398,8 +396,8 @@ pub fn alkanes_holders_by_token(
     
     // Convert AlkaneId to ProtoruneRuneId for compatibility with the storage system
     let protorune_id = ProtoruneRuneId {
-        block: token_id.block,
-        tx: token_id.tx,
+        height: token_id.block,
+        txindex: token_id.tx,
     };
     
     // Use the alkane protocol tag to get the right table
@@ -411,7 +409,7 @@ pub fn alkanes_holders_by_token(
     
     // Get all transaction IDs from all heights where this protocol has activity
     // Start from the token's creation height onwards
-    let creation_height = protorune_id.block as u64;
+    let creation_height = protorune_id.height as u64;
     
     // We'll iterate through a reasonable range of heights
     // In practice, this should be optimized based on the indexer's current height
@@ -455,12 +453,10 @@ pub fn alkanes_holders_by_token(
                             
                         if !address_bytes.is_empty() && address_bytes.len() > 1 {
                             // Create holder outpoint info
-                            let holder_outpoint = HolderOutpoint {
-                                txid: tx_id.as_byte_array().to_vec(),
-                                vout,
-                                balance: Uint128::from(token_balance),
-                                special_fields: SpecialFields::new(),
-                            };
+                            let mut holder_outpoint = HolderOutpoint::new();
+                            holder_outpoint.txid = tx_id.as_byte_array().to_vec();
+                            holder_outpoint.vout = vout;
+                            holder_outpoint.balance = MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance));
                             
                             // Add to or update the address balance
                             let entry = address_balances.entry(address_bytes.as_ref().clone())
@@ -483,7 +479,7 @@ pub fn alkanes_holders_by_token(
     for (address_bytes, (total_balance, outpoints)) in address_balances {
         let mut token_holder = TokenHolder::new();
         token_holder.address = address_bytes;
-        token_holder.total_balance = Uint128::from(total_balance);
+        token_holder.total_balance = MessageField::some(alkanes_support::proto::alkanes::Uint128::from(total_balance));
         token_holder.outpoints = outpoints;
         
         response.holders.push(token_holder);
