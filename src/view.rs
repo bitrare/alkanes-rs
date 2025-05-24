@@ -34,7 +34,6 @@ use protorune::message::{MessageContext, MessageContextParcel};
 use protorune::tables::RUNES;
 use protorune::view;
 use protorune_support::balance_sheet::ProtoruneRuneId;
-use protorune_support::balance_sheet::{BalanceSheet, BalanceSheetOperations};
 use protorune_support::rune_transfer::RuneTransfer;
 use protorune_support::utils::{consensus_decode, decode_varint_list};
 use std::collections::HashMap;
@@ -381,7 +380,6 @@ pub fn alkanes_holders_by_token(
 ) -> Result<alkanes_support::proto::alkanes::HoldersByTokenResponse> {
     use alkanes_support::proto::alkanes::{HoldersByTokenRequest, HoldersByTokenResponse, TokenHolder, HolderOutpoint};
     use protorune_support::proto::protorune::ProtoruneRuneId;
-    use protorune_support::balance_sheet::BalanceSheetOperations;
     use protorune_support::utils::{consensus_decode, outpoint_encode};
     use protorune::tables;
     use protorune::balance_sheet::load_sheet;
@@ -397,8 +395,8 @@ pub fn alkanes_holders_by_token(
     
     // Convert AlkaneId to ProtoruneRuneId for compatibility with the storage system
     let protorune_id = ProtoruneRuneId {
-        height: MessageField::some(token_id.block.clone()),
-        txindex: MessageField::some(token_id.tx.clone()),
+        height: MessageField::some(protorune_support::proto::protorune::Uint128::from(token_id.block)),
+        txindex: MessageField::some(protorune_support::proto::protorune::Uint128::from(token_id.tx)),
         special_fields: SpecialFields::new(),
     };
     
@@ -411,7 +409,7 @@ pub fn alkanes_holders_by_token(
     
     // Get all transaction IDs from all heights where this protocol has activity
     // Start from the token's creation height onwards
-    let creation_height: u64 = token_id.block.as_ref().unwrap().clone().into();
+    let creation_height: u64 = token_id.block.try_into().unwrap_or(0);
     
     // We'll iterate through a reasonable range of heights
     // In practice, this should be optimized based on the indexer's current height
@@ -447,8 +445,8 @@ pub fn alkanes_holders_by_token(
                     
                     // Convert to the right ProtoruneRuneId type for get_cached
                     let balance_sheet_protorune_id = protorune_support::balance_sheet::ProtoruneRuneId {
-                        block: token_id.block.as_ref().unwrap().clone().into(),
-                        tx: token_id.tx.as_ref().unwrap().clone().into(),
+                        block: token_id.block,
+                        tx: token_id.tx,
                     };
                     
                     // Check if this outpoint contains our target token
