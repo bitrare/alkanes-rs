@@ -339,6 +339,19 @@ pub fn protorunesbyoutpoint() -> i32 {
 
 #[cfg(not(test))]
 #[no_mangle]
+pub fn alkanes_holdersbytoken() -> i32 {
+    configure_network();
+    let mut data: Cursor<Vec<u8>> = Cursor::new(input());
+    let _height = consume_sized_int::<u32>(&mut data).unwrap();
+    let result: alkanes_support::proto::alkanes::HoldersByTokenResponse =
+        view::alkanes_holders_by_token(&consume_to_end(&mut data).unwrap())
+            .unwrap_or_else(|_| alkanes_support::proto::alkanes::HoldersByTokenResponse::new());
+
+    export_bytes(result.write_to_bytes().unwrap())
+}
+
+#[cfg(not(test))]
+#[no_mangle]
 pub fn runesbyheight() -> i32 {
     configure_network();
     let mut data: Cursor<Vec<u8>> = Cursor::new(input());
