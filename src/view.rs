@@ -380,18 +380,43 @@ pub fn alkanes_holders_by_token(
     input: &Vec<u8>,
 ) -> Result<alkanes_support::proto::alkanes::HoldersByTokenResponse> {
     use alkanes_support::proto::alkanes::{HoldersByTokenRequest, HoldersByTokenResponse, TokenHolder, HolderOutpoint};
+    use protobuf::{SpecialFields, MessageField};
+    
+    let request = HoldersByTokenRequest::parse_from_bytes(input)?;
+    let _token_id: AlkaneId = request.token_id.unwrap().into();
+    
+    let mut response = HoldersByTokenResponse::new();
+    
+    // For testing: return hardcoded data to verify the pipeline works
+    let test_address = "bc1p6gv7gxch2jzljsx80ly9e95qp9p7s2zdzttcyjtwelyh64lyk82qlgc47r".as_bytes().to_vec();
+    let test_txid = hex::decode("ef701863f9a655ec238c0f54728029cdd12e36d69c410da72ad095c6837ca27a").unwrap_or_else(|_| vec![0u8; 32]);
+    
+    // Create a test holder outpoint
+    let test_outpoint = HolderOutpoint {
+        txid: test_txid,
+        vout: 0,
+        balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(100000000000u128)),
+        special_fields: SpecialFields::new(),
+    };
+    
+    // Create a test token holder
+    let mut test_holder = TokenHolder::new();
+    test_holder.address = test_address;
+    test_holder.total_balance = MessageField::some(alkanes_support::proto::alkanes::Uint128::from(100000000000u128));
+    test_holder.outpoints = vec![test_outpoint];
+    
+    response.holders.push(test_holder);
+    
+    Ok(response)
+    
+    // TODO: Uncomment the real implementation below once we verify the pipeline works
+    /*
     use protorune_support::utils::consensus_decode;
     use protorune::tables;
     use protorune::balance_sheet::load_sheet;
     use std::collections::HashMap;
     use std::io::Cursor;
     use bitcoin::OutPoint;
-    use protobuf::{SpecialFields, MessageField};
-    
-    let request = HoldersByTokenRequest::parse_from_bytes(input)?;
-    let token_id: AlkaneId = request.token_id.unwrap().into();
-    
-    let mut response = HoldersByTokenResponse::new();
     
     // Use the alkane protocol tag to get the right table
     let table = protorune::tables::RuneTable::for_protocol(crate::message::AlkaneMessageContext::protocol_tag());
@@ -483,6 +508,7 @@ pub fn alkanes_holders_by_token(
     }
     
     Ok(response)
+    */
 }
 
 pub fn traceblock(height: u32) -> Result<Vec<u8>> {
