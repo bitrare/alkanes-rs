@@ -405,42 +405,49 @@ pub fn alkanes_holders_by_token(
         tx: token_id.tx,
     };
     
-    // Iterate through all addresses that have outpoints
-    // Use the OUTPOINT_SPENDABLE_BY_ADDRESS table to efficiently find all address->outpoint mappings
-    tables::OUTPOINT_SPENDABLE_BY_ADDRESS.map_all(|address_bytes, outpoint_ptr| -> Result<()> {
-        // Get the outpoint from the pointer
-        let mut cursor = Cursor::new(outpoint_ptr.get().as_ref().clone());
-        if let Ok(outpoint) = consensus_decode::<OutPoint>(&mut cursor) {
-            let outpoint_bytes = match outpoint_encode(&outpoint) {
-                Ok(bytes) => bytes,
-                Err(_) => return Ok(()),
-            };
-            
-            // Load the balance sheet for this outpoint using the correct protocol table
-            let balance_sheet = load_sheet(
-                &table.OUTPOINT_TO_RUNES.select(&outpoint_bytes)
-            );
-            
-            // Check if this outpoint contains our target token
-            let token_balance = balance_sheet.get_cached(&balance_sheet_protorune_id);
-            if token_balance > 0 {
-                // Create holder outpoint info
-                let holder_outpoint = HolderOutpoint {
-                    txid: outpoint.txid.as_byte_array().to_vec(),
-                    vout: outpoint.vout,
-                    balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance)),
-                    special_fields: SpecialFields::new(),
-                };
-                
-                // Add to or update the address balance
-                let entry = address_balances.entry(address_bytes.as_ref().clone())
-                    .or_insert((0u128, Vec::new()));
-                entry.0 += token_balance;
-                entry.1.push(holder_outpoint);
+    // We need to iterate through all outpoints and check if they contain our token
+    // Since we don't have a direct way to iterate all addresses, we'll use the OUTPOINTS_FOR_ADDRESS table
+    // But first we need to get all addresses. Let's use a different approach:
+    // We'll iterate through all outpoints in the OUTPOINT_TO_RUNES table for our protocol
+    
+    // Get all outpoints that have runes for our protocol
+    let outpoint_list = table.OUTPOINT_TO_RUNES.get_all_keys();
+    
+    for outpoint_bytes in outpoint_list {
+        // Load the balance sheet for this outpoint
+        let balance_sheet = load_sheet(
+            &table.OUTPOINT_TO_RUNES.select(&outpoint_bytes)
+        );
+        
+        // Check if this outpoint contains our target token
+        let token_balance = balance_sheet.get_cached(&balance_sheet_protorune_id);
+        if token_balance > 0 {
+            // Decode the outpoint to get txid and vout
+            let mut cursor = Cursor::new(outpoint_bytes.as_ref().clone());
+            if let Ok(outpoint) = consensus_decode::<OutPoint>(&mut cursor) {
+                // Get the address that owns this outpoint
+                let address_bytes = tables::OUTPOINT_SPENDABLE_BY
+                    .select(&outpoint_bytes)
+                    .get();
+                    
+                if !address_bytes.is_empty() {
+                    // Create holder outpoint info
+                    let holder_outpoint = HolderOutpoint {
+                        txid: outpoint.txid.as_byte_array().to_vec(),
+                        vout: outpoint.vout,
+                        balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance)),
+                        special_fields: SpecialFields::new(),
+                    };
+                    
+                    // Add to or update the address balance
+                    let entry = address_balances.entry(address_bytes.as_ref().clone())
+                        .or_insert((0u128, Vec::new()));
+                    entry.0 += token_balance;
+                    entry.1.push(holder_outpoint);
+                }
             }
         }
-        Ok(())
-    })?;
+    }
     
     // Convert the collected data to the response format
     for (address_bytes, (total_balance, outpoints)) in address_balances {
