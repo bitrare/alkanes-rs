@@ -380,14 +380,15 @@ pub fn alkanes_holders_by_token(
     input: &Vec<u8>,
 ) -> Result<alkanes_support::proto::alkanes::HoldersByTokenResponse> {
     use alkanes_support::proto::alkanes::{HoldersByTokenRequest, HoldersByTokenResponse, TokenHolder, HolderOutpoint};
-    use protorune_support::balance_sheet::{BalanceSheetOperations, ProtoruneRuneId};
+    use protorune_support::proto::protorune::ProtoruneRuneId;
+    use protorune_support::balance_sheet::BalanceSheetOperations;
     use protorune_support::utils::{consensus_decode, outpoint_encode};
     use protorune::tables;
     use protorune::balance_sheet::load_sheet;
     use std::collections::HashMap;
     use std::io::Cursor;
     use bitcoin::OutPoint;
-    use protobuf::MessageField;
+    use protobuf::{SpecialFields, MessageField};
     
     let request = HoldersByTokenRequest::parse_from_bytes(input)?;
     let token_id: AlkaneId = request.token_id.unwrap().into();
@@ -396,8 +397,9 @@ pub fn alkanes_holders_by_token(
     
     // Convert AlkaneId to ProtoruneRuneId for compatibility with the storage system
     let protorune_id = ProtoruneRuneId {
-        height: token_id.block,
-        txindex: token_id.tx,
+        height: MessageField::some(token_id.block.clone()),
+        txindex: MessageField::some(token_id.tx.clone()),
+        special_fields: SpecialFields::new(),
     };
     
     // Use the alkane protocol tag to get the right table
@@ -409,7 +411,7 @@ pub fn alkanes_holders_by_token(
     
     // Get all transaction IDs from all heights where this protocol has activity
     // Start from the token's creation height onwards
-    let creation_height = protorune_id.height as u64;
+    let creation_height: u64 = token_id.block.as_ref().unwrap().clone().into();
     
     // We'll iterate through a reasonable range of heights
     // In practice, this should be optimized based on the indexer's current height
@@ -443,8 +445,14 @@ pub fn alkanes_holders_by_token(
                         &table.OUTPOINT_TO_RUNES.select(&outpoint_bytes)
                     );
                     
+                    // Convert to the right ProtoruneRuneId type for get_cached
+                    let balance_sheet_protorune_id = protorune_support::balance_sheet::ProtoruneRuneId {
+                        block: token_id.block.as_ref().unwrap().clone().into(),
+                        tx: token_id.tx.as_ref().unwrap().clone().into(),
+                    };
+                    
                     // Check if this outpoint contains our target token
-                    let token_balance = balance_sheet.get_cached(&protorune_id);
+                    let token_balance = balance_sheet.get_cached(&balance_sheet_protorune_id);
                     if token_balance > 0 {
                         // Get the address that owns this outpoint
                         let address_bytes = tables::OUTPOINT_SPENDABLE_BY
@@ -453,10 +461,12 @@ pub fn alkanes_holders_by_token(
                             
                         if !address_bytes.is_empty() && address_bytes.len() > 1 {
                             // Create holder outpoint info
-                            let mut holder_outpoint = HolderOutpoint::new();
-                            holder_outpoint.txid = tx_id.as_byte_array().to_vec();
-                            holder_outpoint.vout = vout;
-                            holder_outpoint.balance = MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance));
+                            let holder_outpoint = HolderOutpoint {
+                                txid: tx_id.as_byte_array().to_vec(),
+                                vout,
+                                balance: MessageField::some(alkanes_support::proto::alkanes::Uint128::from(token_balance)),
+                                special_fields: SpecialFields::new(),
+                            };
                             
                             // Add to or update the address balance
                             let entry = address_balances.entry(address_bytes.as_ref().clone())
