@@ -34,7 +34,7 @@ use protorune::message::{MessageContext, MessageContextParcel};
 use protorune::tables::RUNES;
 use protorune::view;
 use protorune_support::balance_sheet::ProtoruneRuneId;
-use protorune_support::balance_sheet::BalanceSheet;
+use protorune_support::balance_sheet::{BalanceSheet, BalanceSheetOperations};
 use protorune_support::rune_transfer::RuneTransfer;
 use protorune_support::utils::{consensus_decode, decode_varint_list};
 use std::collections::HashMap;
