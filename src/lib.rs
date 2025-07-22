@@ -366,6 +366,21 @@ pub fn runesbyheight() -> i32 {
     export_bytes(result.write_to_bytes().unwrap())
 }
 
+#[cfg(not(test))]
+#[no_mangle]
+pub fn alkaneinventory() -> i32 {
+    configure_network();
+    let mut data: Cursor<Vec<u8>> = Cursor::new(input());
+    // The first 4 bytes are the block height, currently unused by the view function
+    let _height = consume_sized_int::<u32>(&mut data).unwrap();
+    let input_data = consume_to_end(&mut data).unwrap();
+    let request = alkanes_support::proto::alkanes::AlkaneInventoryRequest::parse_from_bytes(&input_data).unwrap();
+    let result: alkanes_support::proto::alkanes::AlkaneInventoryResponse =
+        view::alkane_inventory(&request)
+            .unwrap_or_else(|_| alkanes_support::proto::alkanes::AlkaneInventoryResponse::new());
+    export_bytes(result.write_to_bytes().unwrap())
+}
+
 // #[no_mangle]
 // pub fn alkane_balance_sheet() -> i32 {
 //     let data = input();
