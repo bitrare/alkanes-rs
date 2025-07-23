@@ -386,8 +386,8 @@ pub fn alkaneinventory() -> i32 {
         Ok(r) if r.id.is_some() => {
             let alkane_id = r.id.as_ref().unwrap();
             println!("alkaneinventory: requesting inventory for alkane {}:{}", 
-                alkane_id.block.as_ref().map(|b| Into::<u32>::into(b.clone())).unwrap_or(0), 
-                alkane_id.tx.as_ref().map(|t| Into::<u32>::into(t.clone())).unwrap_or(0));
+                alkane_id.block.as_ref().map(|b| Into::<u128>::into(b.clone()) as u32).unwrap_or(0), 
+                alkane_id.tx.as_ref().map(|t| Into::<u128>::into(t.clone()) as u32).unwrap_or(0));
             r
         },
         Ok(_) => {
