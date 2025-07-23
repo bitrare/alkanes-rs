@@ -380,6 +380,23 @@ pub fn alkaneinventory() -> i32 {
     let payload = consume_to_end(&mut cursor).unwrap_or_default();
 
     println!("alkaneinventory: received payload of {} bytes", payload.len());
+    println!("alkaneinventory: payload hex: {}", hex::encode(&payload));
+
+    // Debug: create a test request to see what proper encoding looks like
+    {
+        use alkanes_support::proto::alkanes::{AlkaneId, Uint128};
+        use protobuf::{Message, MessageField};
+        
+        let mut test_id = AlkaneId::new();
+        test_id.block = MessageField::some(Uint128::from(2u128));
+        test_id.tx = MessageField::some(Uint128::from(57751u128));
+        
+        let mut test_req = AlkaneInventoryRequest::new();
+        test_req.id = MessageField::some(test_id);
+        
+        let test_bytes = test_req.write_to_bytes().unwrap();
+        println!("alkaneinventory: expected request would be {} bytes: {}", test_bytes.len(), hex::encode(&test_bytes));
+    }
 
     // Parse the request safely – if it fails or id is missing, return empty response
     let req = match AlkaneInventoryRequest::parse_from_bytes(&payload) {
