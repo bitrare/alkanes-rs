@@ -369,16 +369,29 @@ pub fn runesbyheight() -> i32 {
 #[cfg(not(test))]
 #[no_mangle]
 pub fn alkaneinventory() -> i32 {
+    use alkanes_support::proto::alkanes::{AlkaneInventoryRequest, AlkaneInventoryResponse};
+
     configure_network();
-    let mut data: Cursor<Vec<u8>> = Cursor::new(input());
-    // The first 4 bytes are the block height, currently unused by the view function
-    let _height = consume_sized_int::<u32>(&mut data).unwrap();
-    let input_data = consume_to_end(&mut data).unwrap();
-    let request = alkanes_support::proto::alkanes::AlkaneInventoryRequest::parse_from_bytes(&input_data).unwrap();
-    let result: alkanes_support::proto::alkanes::AlkaneInventoryResponse =
-        view::alkane_inventory(&request)
-            .unwrap_or_else(|_| alkanes_support::proto::alkanes::AlkaneInventoryResponse::new());
-    export_bytes(result.write_to_bytes().unwrap())
+
+    // Read the input buffer (height header + protobuf body)
+    let mut cursor = Cursor::<Vec<u8>>::new(input());
+    // Ignore height (we don't care here)
+    let _ = consume_sized_int::<u32>(&mut cursor);
+    let payload = consume_to_end(&mut cursor).unwrap_or_default();
+
+    // Parse the request safely – if it fails or id is missing, return empty response
+    let req = match AlkaneInventoryRequest::parse_from_bytes(&payload) {
+        Ok(r) if r.id.is_some() => r,
+        _ => {
+            let empty = AlkaneInventoryResponse::new();
+            return export_bytes(empty.write_to_bytes().unwrap());
+        }
+    };
+
+    // Call into view layer; on error fallback to empty response
+    let resp = view::alkane_inventory(&req).unwrap_or_else(|_| AlkaneInventoryResponse::new());
+
+    export_bytes(resp.write_to_bytes().unwrap())
 }
 
 // #[no_mangle]
