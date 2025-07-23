@@ -360,28 +360,42 @@ pub fn alkanes_id_to_outpoint(input: &Vec<u8>) -> Result<AlkaneIdToOutpointRespo
 
 pub fn alkane_inventory(req: &AlkaneInventoryRequest) -> Result<AlkaneInventoryResponse> {
     let mut result: AlkaneInventoryResponse = AlkaneInventoryResponse::new();
-    let alkane_inventory = alkane_inventory_pointer(&req.id.clone().unwrap().into());
+    
+    let alkane_id = req.id.as_ref().ok_or_else(|| anyhow!("AlkaneInventoryRequest missing id field"))?;
+    let alkane_inventory = alkane_inventory_pointer(&alkane_id.clone().into());
+    
+    println!("alkane_inventory: checking inventory for alkane, found {} entries", alkane_inventory.get_list().len());
+    
     result.alkanes = alkane_inventory
         .get_list()
         .into_iter()
-        .map(|alkane_held| -> proto::alkanes::AlkaneTransfer {
-            let id = alkanes_support::id::AlkaneId::parse(&mut Cursor::new(
+        .filter_map(|alkane_held| -> Option<proto::alkanes::AlkaneTransfer> {
+            let id = match alkanes_support::id::AlkaneId::parse(&mut Cursor::new(
                 alkane_held.as_ref().clone(),
-            ))
-            .unwrap();
+            )) {
+                Ok(id) => id,
+                Err(e) => {
+                    println!("alkane_inventory: failed to parse alkane id: {:?}", e);
+                    return None;
+                }
+            };
+            
             let balance_pointer = balance_pointer(
                 &mut AtomicPointer::default(),
-                &req.id.clone().unwrap().into(),
+                &alkane_id.clone().into(),
                 &id,
             );
             let balance = balance_pointer.get_value::<u128>();
-            (AlkaneTransfer {
+            
+            Some((AlkaneTransfer {
                 id: id,
                 value: balance,
             })
-            .into()
+            .into())
         })
         .collect::<Vec<proto::alkanes::AlkaneTransfer>>();
+        
+    println!("alkane_inventory: returning {} valid alkane transfers", result.alkanes.len());
     Ok(result)
 }
 

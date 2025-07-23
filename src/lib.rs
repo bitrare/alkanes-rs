@@ -379,17 +379,40 @@ pub fn alkaneinventory() -> i32 {
     let _ = consume_sized_int::<u32>(&mut cursor);
     let payload = consume_to_end(&mut cursor).unwrap_or_default();
 
+    println!("alkaneinventory: received payload of {} bytes", payload.len());
+
     // Parse the request safely – if it fails or id is missing, return empty response
     let req = match AlkaneInventoryRequest::parse_from_bytes(&payload) {
-        Ok(r) if r.id.is_some() => r,
-        _ => {
+        Ok(r) if r.id.is_some() => {
+            let alkane_id = r.id.as_ref().unwrap();
+            println!("alkaneinventory: requesting inventory for alkane {}:{}", 
+                alkane_id.block.as_ref().map(|b| Into::<u32>::into(b.clone())).unwrap_or(0), 
+                alkane_id.tx.as_ref().map(|t| Into::<u32>::into(t.clone())).unwrap_or(0));
+            r
+        },
+        Ok(_) => {
+            println!("alkaneinventory: request missing id field");
+            let empty = AlkaneInventoryResponse::new();
+            return export_bytes(empty.write_to_bytes().unwrap());
+        },
+        Err(e) => {
+            println!("alkaneinventory: failed to parse request: {:?}", e);
             let empty = AlkaneInventoryResponse::new();
             return export_bytes(empty.write_to_bytes().unwrap());
         }
     };
 
     // Call into view layer; on error fallback to empty response
-    let resp = view::alkane_inventory(&req).unwrap_or_else(|_| AlkaneInventoryResponse::new());
+    let resp = match view::alkane_inventory(&req) {
+        Ok(response) => {
+            println!("alkaneinventory: successfully retrieved {} alkanes", response.alkanes.len());
+            response
+        },
+        Err(e) => {
+            println!("alkaneinventory: view::alkane_inventory failed: {:?}", e);
+            AlkaneInventoryResponse::new()
+        }
+    };
 
     export_bytes(resp.write_to_bytes().unwrap())
 }
