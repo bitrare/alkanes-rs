@@ -374,10 +374,9 @@ pub fn alkaneinventory() -> i32 {
     configure_network();
 
     // Read the input buffer (height header + protobuf body)
-    let mut cursor = Cursor::<Vec<u8>>::new(input());
-    // Ignore height (we don't care here)
-    let _ = consume_sized_int::<u32>(&mut cursor);
-    let payload = consume_to_end(&mut cursor).unwrap_or_default();
+    let mut data: Cursor<Vec<u8>> = Cursor::new(input());
+    let _height = consume_sized_int::<u32>(&mut data).unwrap();
+    let payload = consume_to_end(&mut data).unwrap();
 
     println!("alkaneinventory: received payload of {} bytes", payload.len());
     println!("alkaneinventory: payload hex: {}", hex::encode(&payload));
